@@ -1,7 +1,7 @@
 // Configurazione e Stato Globale
 let peer = null;
 let conn = null; // Usato dal Client per comunicare con l'Host
-let connections = []; // Lista di tutte le connessioni active (usato dall'Host)[cite: 1]
+let connections = []; // Lista di tutte le connessioni attive (usato dall'Host)[cite: 1]
 let isHost = false;
 let myPeerId = "";
 let myNickname = "";
@@ -454,6 +454,7 @@ function handleFlipAction() {
                 activePlayer.cards.pop();
                 sendGameState();
             } else {
+                // Mantiene isProcessingAction su true per bloccare i controlli durante la scelta
                 sendGameState(shooter.id, eligibleTargets.map(t => ({ id: t.id, name: t.name })));
             }
         }, 1500);
@@ -498,6 +499,7 @@ function executeThreeStrikesAssignment(targetId) {
     
     if (!targetPlayer) return;
     
+    // Rimuove il "Pesca 3" dalla fila del giocatore che l'ha pescato
     shooterPlayer.cards = shooterPlayer.cards.filter(c => c.type !== CARD_TYPES.THREE_STRIKES);
     
     broadcast({ 
@@ -506,11 +508,15 @@ function executeThreeStrikesAssignment(targetId) {
     });
     alert(`${shooterPlayer.name} ha lanciato una carta "PESCA 3" su ${targetPlayer.name}!`);
 
+    // Memorizza chi deve tornare a giocare dopo la punizione
     const originalActiveIndex = activePlayerIndex;
+    
+    // Sposta temporaneamente il mirino sul bersaglio
     activePlayerIndex = players.indexOf(targetPlayer);
     
     let strikesDrawn = 0;
     isProcessingAction = true;
+    sendGameState();
 
     function drawStrike() {
         if (strikesDrawn < 3) {
@@ -545,8 +551,9 @@ function executeThreeStrikesAssignment(targetId) {
                         targetPlayer.hasHeart = false;
                         alert(`${targetPlayer.name} ha sballato a causa del "Pesca 3"!`);
                         
-                        activePlayerIndex = originalActiveIndex;
+                        // Sblocca lo stato prima di reimpostare l'indice e passare il turno
                         isProcessingAction = false;
+                        activePlayerIndex = originalActiveIndex;
                         nextTurn();
                     }
                 } else {
@@ -556,13 +563,16 @@ function executeThreeStrikesAssignment(targetId) {
             }, 1200);
         } else {
             alert(`${targetPlayer.name} è sopravvissuto al "Pesca 3"!`);
-            activePlayerIndex = originalActiveIndex;
+            
+            // Sblocca lo stato prima di reimpostare l'indice e passare il turno
             isProcessingAction = false;
+            activePlayerIndex = originalActiveIndex;
             nextTurn();
         }
     }
 
-    drawStrike();
+    // Ritardo minimo per rendere l'inizio della pescata visibile
+    setTimeout(drawStrike, 800);
 }
 
 function playerStop() {

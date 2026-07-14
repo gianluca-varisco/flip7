@@ -87,7 +87,7 @@ input[type="text"] {
     margin-bottom: 20px;
 }
 
-/* Layout Tavolo */
+/* Layout Table */
 .game-layout {
     display: flex;
     gap: 20px;
