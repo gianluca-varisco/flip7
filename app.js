@@ -320,6 +320,7 @@ function selectTarget(targetId) {
 function startGame() {
     if (!isHost) return;
     
+    // 1. Genera e mischia il mazzo comune
     deck = createDeck();
     activePlayerIndex = 0;
     currentTurnCards = [];
@@ -327,12 +328,18 @@ function startGame() {
     hasHeart = false;
     isProcessingAction = false;
     
+    // 2. Inizializza correttamente lo stato di ciascun giocatore connesso
     players.forEach(p => {
         p.score = 0;
         p.busted = false;
         p.banked = false;
     });
     
+    // 3. Nascondi la lobby e mostra il tavolo da gioco sull'Host
+    document.getElementById('lobby').style.display = 'none';
+    document.getElementById('table').style.display = 'block';
+    
+    // 4. Invia il comando di inizio ai client e distribuisci lo stato iniziale sincronizzato
     broadcast({ type: 'START_GAME_CLIENT' });
     sendGameState();
 }
