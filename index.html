@@ -44,29 +44,33 @@
             <div id="turn-indicator">In attesa dell'inizio...</div>
             
             <div class="game-layout">
-                <!-- Tabellone Punteggi -->
+                <!-- Tabellone Punteggi Laterale -->
                 <div class="scoreboard">
                     <h3>Punteggi</h3>
                     <div id="scores-list"></div>
                 </div>
 
-                <!-- Area di Gioco Centrale -->
+                <!-- Area di Gioco Principale -->
                 <div class="play-area">
-                    <div class="deck-area">
-                        <button id="btn-flip" onclick="playerFlip()" disabled>GIRA UNA CARTA</button>
-                        <button id="btn-stop" onclick="playerStop()" disabled>FERMATI (BANK)</button>
+                    
+                    <!-- SEZIONE 1: IL TUO SPAZIO PERSONALE -->
+                    <div class="personal-area">
+                        <div class="deck-area">
+                            <button id="btn-flip" onclick="playerFlip()" disabled>GIRA UNA CARTA</button>
+                            <button id="btn-stop" onclick="playerStop()" disabled>FERMATI (BANK)</button>
+                        </div>
+                        <div class="current-row-container">
+                            <h3>Le tue carte (Questo round):</h3>
+                            <div id="current-row" class="card-row"></div>
+                        </div>
                     </div>
 
-                    <div class="current-row-container">
-                        <h3>La tua fila corrente (In grande):</h3>
-                        <div id="current-row" class="card-row"></div>
-                    </div>
-
-                    <!-- Nuova sezione: File degli altri giocatori in piccolo -->
+                    <!-- SEZIONE 2: GLI AVVERSARI (Rettangoli separati in piccolo) -->
                     <div class="opponents-container">
-                        <h3>File degli altri giocatori:</h3>
+                        <h3>Tavoli degli altri giocatori:</h3>
                         <div id="opponents-row" class="opponents-grid"></div>
                     </div>
+
                 </div>
             </div>
         </div>
