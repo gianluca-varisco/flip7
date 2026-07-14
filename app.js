@@ -1,7 +1,7 @@
 // Configurazione e Stato Globale
 let peer = null;
-let conn = null; // Connessione singola per chi si unisce (Client)
-let connections = []; // Lista di connessioni per l'Host
+let conn = null; // Usato dal Client per comunicare con l'Host
+let connections = []; // Lista di tutte le connessioni attive (usato dall'Host)
 let isHost = false;
 let myPeerId = "";
 let myNickname = "";
@@ -51,7 +51,6 @@ function createDeck() {
 
 // Inizializza PeerJS
 function initPeer(callback) {
-    // Usiamo una configurazione esplicita e sicura per il server di PeerJS
     peer = new Peer(undefined, {
         host: '0.peerjs.com',
         port: 443,
@@ -88,9 +87,8 @@ function startHost() {
         
         // Ascolta le connessioni in entrata
         peer.on('connection', (connection) => {
-            conn = connection;
-            connections.push(conn);
-            setupHostConnection(conn);
+            connections.push(connection);
+            setupHostConnection(connection);
         });
     });
 }
@@ -98,15 +96,20 @@ function startHost() {
 // Configura eventi per l'Host sulla connessione di un Client
 function setupHostConnection(connection) {
     connection.on('open', () => {
-        // Chiedi il nome al client appena connesso
+        // Appena il canale è aperto, l'Host richiede esplicitamente il nickname
         connection.send({ type: 'REQUEST_NICKNAME' });
     });
 
     connection.on('data', (data) => {
         if (data.type === 'SEND_NICKNAME') {
-            players.push({ id: connection.peer, name: data.nickname, score: 0, active: true });
-            updatePlayerListUI();
-            broadcast({ type: 'UPDATE_PLAYERS', players: players });
+            // Verifica che il giocatore non sia già presente
+            if (!players.some(p => p.id === connection.peer)) {
+                players.push({ id: connection.peer, name: data.nickname, score: 0, active: true });
+                updatePlayerListUI();
+                
+                // Comunica la lista aggiornata a tutti i client connessi
+                broadcast({ type: 'UPDATE_PLAYERS', players: players });
+            }
         }
         
         if (data.type === 'ACTION_FLIP') {
@@ -116,6 +119,14 @@ function setupHostConnection(connection) {
         if (data.type === 'ACTION_STOP') {
             handleStopAction();
         }
+    });
+
+    connection.on('close', () => {
+        // Rimuove il giocatore se si disconnette prima o durante la partita
+        players = players.filter(p => p.id !== connection.peer);
+        connections = connections.filter(c => c.peer !== connection.peer);
+        updatePlayerListUI();
+        broadcast({ type: 'UPDATE_PLAYERS', players: players });
     });
 }
 
@@ -136,7 +147,7 @@ function joinGame() {
         conn.on('open', () => {
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('table').style.display = 'block';
-            document.getElementById('turn-indicator').innerText = "In attesa che l'host avvii la partita...";
+            document.getElementById('turn-indicator').innerText = "Connesso! In attesa che l'host avvii la partita...";
         });
         
         conn.on('data', (data) => {
@@ -159,6 +170,11 @@ function joinGame() {
                 renderCurrentCards();
                 updateTurnControls();
             }
+        });
+
+        conn.on('close', () => {
+            alert("Connessione con l'Host interrotta.");
+            location.reload();
         });
     });
 }
