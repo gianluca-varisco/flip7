@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flip 7 - Online Multiplayer</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- PeerJS per il multiplayer P2P gratuito -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Flip 7 Multiplayer</h1>
+        
+        <!-- Schermata di Connessione (Lobby) -->
+        <div id="lobby" class="panel">
+            <h2>Lobby di Connessione</h2>
+            <div class="lobby-controls">
+                <div class="control-group">
+                    <button id="btn-host" onclick="startHost()">Ospita una Partita (Host)</button>
+                    <p id="host-id-display" class="highlight-text"></p>
+                </div>
+                <div class="divider">oppure</div>
+                <div class="control-group">
+                    <input type="text" id="join-id" placeholder="Inserisci l'ID dell'Host">
+                    <button id="btn-join" onclick="joinGame()">Unisciti alla Partita</button>
+                </div>
+            </div>
+            <div id="player-list-container" style="display:none;">
+                <h3>Giocatori Connessi:</h3>
+                <ul id="player-list"></ul>
+                <button id="btn-start-game" style="display:none;" onclick="startGame()">Inizia Partita</button>
+            </div>
+        </div>
+
+        <!-- Tavolo da Gioco (Nascosto all'inizio) -->
+        <div id="table" class="panel" style="display: none;">
+            <div id="turn-indicator">In attesa dell'inizio...</div>
+            
+            <div class="game-layout">
+                <!-- Tabellone Punteggi -->
+                <div class="scoreboard">
+                    <h3>Punteggi</h3>
+                    <div id="scores-list"></div>
+                </div>
+
+                <!-- Area di Gioco Centrale -->
+                <div class="play-area">
+                    <div class="deck-area">
+                        <button id="btn-flip" onclick="playerFlip()" disabled>GIRA UNA CARTA</button>
+                        <button id="btn-stop" onclick="playerStop()" disabled>FERMATI (BANK)</button>
+                    </div>
+
+                    <div class="current-row-container">
+                        <h3>La tua fila corrente:</h3>
+                        <div id="current-row" class="card-row"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
