@@ -23,6 +23,16 @@ const CARD_TYPES = {
     HEART: 'heart'
 };
 
+// Funzione per generare un ID corto e casuale (4 caratteri maiuscoli/numeri)
+function generateShortId() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let result = "";
+    for (let i = 0; i < 4; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
 function createDeck() {
     let newDeck = [];
     
@@ -49,9 +59,9 @@ function createDeck() {
 
 // --- LOGICA DI RETE (PEERJS) ---
 
-// Inizializza PeerJS
-function initPeer(callback) {
-    peer = new Peer(undefined, {
+// Inizializza PeerJS con ID personalizzato (se fornito)
+function initPeer(customId, callback) {
+    peer = new Peer(customId, {
         host: '0.peerjs.com',
         port: 443,
         secure: true,
@@ -65,22 +75,35 @@ function initPeer(callback) {
 
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
-        alert("Errore di connessione a PeerJS: " + err.type);
+        if (err.type === 'unavailable-id') {
+            // Se per sfortuna l'ID corto è già occupato, ne genera un altro (solo per l'Host)
+            if (isHost) {
+                console.log("ID occupato, tentativo con un nuovo ID...");
+                startHost();
+            } else {
+                alert("Impossibile connettersi. L'ID potrebbe essere errato.");
+            }
+        } else {
+            alert("Errore di connessione a PeerJS: " + err.type);
+        }
     });
 }
 
 // Avvia come Host
 function startHost() {
     myNickname = prompt("Inserisci il tuo Nickname:") || "Host";
-    initPeer((id) => {
-        isHost = true;
+    const shortId = generateShortId(); // Genera l'ID corto di 4 caratteri
+    
+    isHost = true;
+    
+    initPeer(shortId, (id) => {
         document.getElementById('host-id-display').innerText = "ID Partita: " + id;
         document.getElementById('btn-host').disabled = true;
         document.getElementById('btn-join').disabled = true;
         document.getElementById('join-id').disabled = true;
         
-        // Aggiungi te stesso ai giocatori
-        players.push({ id: id, name: myNickname, score: 0, active: true });
+        // Reset della lista giocatori se l'host viene riavviato
+        players = [{ id: id, name: myNickname, score: 0, active: true }];
         updatePlayerListUI();
         document.getElementById('player-list-container').style.display = 'block';
         document.getElementById('btn-start-game').style.display = 'inline-block';
@@ -96,18 +119,14 @@ function startHost() {
 // Configura eventi per l'Host sulla connessione di un Client
 function setupHostConnection(connection) {
     connection.on('open', () => {
-        // Appena il canale è aperto, l'Host richiede esplicitamente il nickname
         connection.send({ type: 'REQUEST_NICKNAME' });
     });
 
     connection.on('data', (data) => {
         if (data.type === 'SEND_NICKNAME') {
-            // Verifica che il giocatore non sia già presente
             if (!players.some(p => p.id === connection.peer)) {
                 players.push({ id: connection.peer, name: data.nickname, score: 0, active: true });
                 updatePlayerListUI();
-                
-                // Comunica la lista aggiornata a tutti i client connessi
                 broadcast({ type: 'UPDATE_PLAYERS', players: players });
             }
         }
@@ -122,7 +141,6 @@ function setupHostConnection(connection) {
     });
 
     connection.on('close', () => {
-        // Rimuove il giocatore se si disconnette prima o durante la partita
         players = players.filter(p => p.id !== connection.peer);
         connections = connections.filter(c => c.peer !== connection.peer);
         updatePlayerListUI();
@@ -132,7 +150,7 @@ function setupHostConnection(connection) {
 
 // Unisciti come Client
 function joinGame() {
-    const hostId = document.getElementById('join-id').value.trim();
+    const hostId = document.getElementById('join-id').value.trim().toUpperCase(); // Converte in maiuscolo
     if (!hostId) {
         alert("Inserisci un ID Host valido!");
         return;
@@ -140,8 +158,10 @@ function joinGame() {
     
     myNickname = prompt("Inserisci il tuo Nickname:") || "Giocatore";
     
-    initPeer((id) => {
-        isHost = false;
+    isHost = false;
+    
+    // Il client si registra con un ID casuale di sistema, ma si connette all'ID corto dell'Host
+    initPeer(undefined, (id) => {
         conn = peer.connect(hostId);
         
         conn.on('open', () => {
@@ -275,11 +295,9 @@ function sendGameState() {
     };
     
     if (isHost) {
-        // Aggiorna UI locale
         updateScoresUI();
         renderCurrentCards();
         updateTurnControls();
-        // Invia aggiornamento ai client
         broadcast({ type: 'UPDATE_STATE', ...state });
     }
 }
@@ -295,16 +313,13 @@ function playerFlip() {
 
 function handleFlipAction() {
     if (deck.length === 0) {
-        deck = createDeck(); // Rigenera il mazzo se finisce
+        deck = createDeck();
     }
     
     const card = deck.pop();
-    
-    // Controlla se sballa (Bust)
     let isBust = false;
     
     if (card.type === CARD_TYPES.NUMBER) {
-        // Se il numero è già presente nella fila, sballi
         const duplicate = currentTurnCards.find(c => c.type === CARD_TYPES.NUMBER && c.value === card.value);
         if (duplicate) {
             isBust = true;
@@ -313,7 +328,6 @@ function handleFlipAction() {
     
     currentTurnCards.push(card);
     
-    // Gestione carte speciali
     if (card.type === CARD_TYPES.DOUBLE) {
         hasDouble = true;
     }
@@ -323,9 +337,7 @@ function handleFlipAction() {
     
     if (isBust) {
         if (hasHeart) {
-            // Se possiede una carta cuore, la consuma e si salva
             hasHeart = false;
-            // Rimuovi l'ultimo duplicato o la carta speciale cuore appena pescata per salvarlo
             const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
             if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
             alert("Sballato! Ma la carta Cuore ti ha salvato la vita!");
@@ -339,7 +351,6 @@ function handleFlipAction() {
         }
     }
     
-    // Se è un FREEZE, il turno si interrompe immediatamente consolidando i punti
     if (card.type === CARD_TYPES.FREEZE) {
         alert("Hai pescato un Freeze! Il tuo turno termina qui con successo.");
         handleStopAction();
@@ -359,7 +370,6 @@ function playerStop() {
 }
 
 function handleStopAction() {
-    // Calcola il punteggio della fila
     let turnScore = 0;
     
     currentTurnCards.forEach(c => {
@@ -374,17 +384,37 @@ function handleStopAction() {
     
     players[activePlayerIndex].score += turnScore;
     
-    // Reset stato del turno
+    // Reset stato del turno corrente
     currentTurnCards = [];
     hasDouble = false;
     hasHeart = false;
     
     // Controlla se qualcuno ha raggiunto la soglia di vittoria (200 punti)
     if (players[activePlayerIndex].score >= 200) {
-        alert(`Il giocatore ${players[activePlayerIndex].name} ha vinto la partita raggiungendo ${players[activePlayerIndex].score} punti!`);
+        alert(`Il giocatore ${players[activePlayerIndex].name} ha vinto la partita raggiungendo ${players[activePlayerIndex].score} punti!\nLa partita ricomincerà ora da zero!`);
+        resetWholeGame();
+        return;
     }
     
     nextTurn();
+}
+
+// Funzione di Reset Totale al raggiungimento dei 200 punti
+function resetWholeGame() {
+    if (!isHost) return;
+    
+    // Azzera i punteggi di tutti i giocatori
+    players.forEach(p => p.score = 0);
+    
+    // Rigenera e mischia il mazzo
+    deck = createDeck();
+    activePlayerIndex = 0;
+    currentTurnCards = [];
+    hasDouble = false;
+    hasHeart = false;
+    
+    // Notifica tutti del riavvio e aggiorna lo schermo
+    sendGameState();
 }
 
 function nextTurn() {
