@@ -357,8 +357,8 @@ function handleStopAction() {
     hasDouble = false;
     hasHeart = false;
     
-    // Controlla se qualcuno ha raggiunto la soglia di vittoria (es. 77 punti)
-    if (players[activePlayerIndex].score >= 77) {
+    // Controlla se qualcuno ha raggiunto la soglia di vittoria (es. 200 punti)
+    if (players[activePlayerIndex].score >= 200) {
         alert(`Il giocatore ${players[activePlayerIndex].name} ha vinto la partita raggiungendo ${players[activePlayerIndex].score} punti!`);
         // Puoi reimpostare il gioco qui se necessario
     }
