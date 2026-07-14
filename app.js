@@ -270,6 +270,7 @@ function updateTurnControls() {
     const isMyTurn = (players[activePlayerIndex] && players[activePlayerIndex].id === myPeerId);
     
     document.getElementById('btn-flip').disabled = !isMyTurn || isProcessingAction;
+    // Permetti sempre di fermarsi se ci sono carte in tavola
     document.getElementById('btn-stop').disabled = !isMyTurn || currentTurnCards.length === 0 || isProcessingAction;
     
     const turnIndicator = document.getElementById('turn-indicator');
@@ -320,7 +321,6 @@ function selectTarget(targetId) {
 function startGame() {
     if (!isHost) return;
     
-    // 1. Genera e mischia il mazzo comune
     deck = createDeck();
     activePlayerIndex = 0;
     currentTurnCards = [];
@@ -328,18 +328,15 @@ function startGame() {
     hasHeart = false;
     isProcessingAction = false;
     
-    // 2. Inizializza correttamente lo stato di ciascun giocatore connesso
     players.forEach(p => {
         p.score = 0;
         p.busted = false;
         p.banked = false;
     });
     
-    // 3. Nascondi la lobby e mostra il tavolo da gioco sull'Host
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('table').style.display = 'block';
     
-    // 4. Invia il comando di inizio ai client e distribuisci lo stato iniziale sincronizzato
     broadcast({ type: 'START_GAME_CLIENT' });
     sendGameState();
 }
@@ -409,18 +406,16 @@ function handleFlipAction() {
     // Gestione della carta speciale PESCA TRE (Three Strikes)
     if (card.type === CARD_TYPES.THREE_STRIKES) {
         setTimeout(() => {
-            // Trova i bersagli validi: giocatori diversi da chi pesca, che non siano sballati o già fermati in questo turno
             const shooter = players[activePlayerIndex];
-            const eligibleTargets = players.filter(p => p.id !== shooter.id && !p.busted && !p.banked);
+            // I bersagli validi qui includono anche i "banked" (quelli fermati volontariamente), ma escludono solo chi è sballato (busted)
+            const eligibleTargets = players.filter(p => p.id !== shooter.id && !p.busted);
             
             if (eligibleTargets.length === 0) {
                 alert("Non ci sono altri giocatori validi a cui assegnare la carta! Viene scartata.");
                 isProcessingAction = false;
-                // Rimuovi la carta "Pesca 3" dalla fila per non calcolare punti errati
                 currentTurnCards.pop();
                 sendGameState();
             } else {
-                // Sospendi il turno per far scegliere l'assegnatario
                 sendGameState(shooter.id, eligibleTargets.map(t => ({ id: t.id, name: t.name })));
             }
         }, 1500);
@@ -438,34 +433,35 @@ function handleFlipAction() {
                     const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
                     if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
                     alert("Sballato! Ma la carta Cuore ti ha salvato la vita!");
-                    sendGameState();
+                    // Passa il turno dopo il salvataggio
+                    nextTurn();
                 } else {
                     players[activePlayerIndex].busted = true;
                     alert("Sballato (Bust)! Fai 0 punti in questo turno.");
-                    currentTurnCards = [];
-                    hasDouble = false;
-                    hasHeart = false;
+                    // Nota: NON azzeriamo currentTurnCards qui perché appartiene a tutto il round/tavolo.
+                    // Chi sballa è fuori dai giochi, ma le carte rimangono sul tavolo.
                     nextTurn();
                 }
             } else if (card.type === CARD_TYPES.FREEZE) {
-                alert("Hai pescato un Freeze! Il tuo turno termina qui con successo.");
+                alert("Hai pescato un Freeze! Il tuo turno termina con successo (vieni congelato/fermato).");
                 handleStopAction();
             }
         }, 1500);
     } else {
-        isProcessingAction = false;
-        sendGameState();
+        // Nessuno sballo e nessuna azione speciale: passa direttamente il turno al prossimo giocatore
+        setTimeout(() => {
+            isProcessingAction = false;
+            nextTurn();
+        }, 1000);
     }
 }
 
-// L'Host esegue la punizione del "Pesca 3" sul bersaglio scelto
 function executeThreeStrikesAssignment(targetId) {
     const targetPlayer = players.find(p => p.id === targetId);
     const shooterPlayer = players[activePlayerIndex];
     
     if (!targetPlayer) return;
     
-    // Rimuovi la carta speciale dal tavolo del giocatore corrente prima di riprendere
     currentTurnCards = currentTurnCards.filter(c => c.type !== CARD_TYPES.THREE_STRIKES);
     
     broadcast({ 
@@ -474,16 +470,12 @@ function executeThreeStrikesAssignment(targetId) {
     });
     alert(`${shooterPlayer.name} ha lanciato una carta "PESCA 3" su ${targetPlayer.name}!`);
 
-    // Cambia temporaneamente il giocatore attivo sul bersaglio
     const originalActiveIndex = activePlayerIndex;
     activePlayerIndex = players.indexOf(targetPlayer);
     
-    // Salva le carte correnti del giocatore bersaglio (se ne aveva)
-    // Nota: in genere il bersaglio riceve la sanzione sul suo mazzo di carte corrente
     let strikesDrawn = 0;
     isProcessingAction = true;
 
-    // Funzione asincrona ricorsiva per far apparire le 3 carte una alla volta con intervallo
     function drawStrike() {
         if (strikesDrawn < 3) {
             if (deck.length === 0) deck = createDeck();
@@ -509,14 +501,10 @@ function executeThreeStrikesAssignment(targetId) {
                         drawStrike();
                     } else {
                         targetPlayer.busted = true;
-                        alert(`${targetPlayer.name} ha sballato durante il "Pesca 3" e perde tutti i punti della sua riga!`);
-                        currentTurnCards = [];
-                        hasDouble = false;
-                        hasHeart = false;
-                        // Ripristina il turno originale
+                        alert(`${targetPlayer.name} ha sballato durante il "Pesca 3" e non farà punti in questo round!`);
                         activePlayerIndex = originalActiveIndex;
                         isProcessingAction = false;
-                        sendGameState();
+                        nextTurn();
                     }
                 } else {
                     strikesDrawn++;
@@ -524,16 +512,13 @@ function executeThreeStrikesAssignment(targetId) {
                 }
             }, 1200);
         } else {
-            // Il bersaglio è sopravvissuto a tutte e 3 le pescate!
             alert(`${targetPlayer.name} è sopravvissuto brillantemente al "Pesca 3"!`);
-            // Ripristina il turno originale di chi ha giocato la carta
             activePlayerIndex = originalActiveIndex;
             isProcessingAction = false;
-            sendGameState();
+            nextTurn();
         }
     }
 
-    // Avvia la punizione
     drawStrike();
 }
 
@@ -555,22 +540,18 @@ function handleStopAction() {
         turnScore += c.value;
     });
     
-    // Regola Bonus delle 7 carte numeriche diverse
     if (numberCards.length >= 7) {
         turnScore += 15;
-        alert(`Bonus Flip 7! Hai collezionato ${numberCards.length} carte numeriche diverse: +15 punti bonus!`);
+        alert(`Bonus Flip 7! Avete collezionato ${numberCards.length} carte numeriche diverse: +15 punti bonus!`);
     }
     
     if (hasDouble) {
         turnScore *= 2;
     }
     
+    // Assegna il punteggio corrente al giocatore che si ferma volontariamente
     players[activePlayerIndex].score += turnScore;
     players[activePlayerIndex].banked = true;
-    
-    currentTurnCards = [];
-    hasDouble = false;
-    hasHeart = false;
     
     if (players[activePlayerIndex].score >= 200) {
         broadcast({ 
@@ -606,21 +587,27 @@ function resetWholeGame() {
 }
 
 function nextTurn() {
-    // Trova il prossimo giocatore non sballato e non congelato
+    // Controlla se TUTTI i giocatori del round sono sballati o si sono fermati volontariamente (banked)
+    if (players.every(p => p.busted || p.banked)) {
+        alert("Il round è terminato! Tutte le carte accumulate sul tavolo vengono rimosse per il prossimo round.");
+        players.forEach(p => {
+            p.busted = false;
+            p.banked = false;
+        });
+        currentTurnCards = [];
+        hasDouble = false;
+        hasHeart = false;
+        activePlayerIndex = 0;
+        sendGameState();
+        return;
+    }
+
+    // Trova il prossimo giocatore attivo (non sballato e non banked)
     let attempts = 0;
     do {
         activePlayerIndex = (activePlayerIndex + 1) % players.length;
         attempts++;
     } while ((players[activePlayerIndex].busted || players[activePlayerIndex].banked) && attempts < players.length);
-    
-    // Se tutti hanno finito (sballati o congelati), ripristina lo stato per il prossimo round
-    if (players.every(p => p.busted || p.banked)) {
-        players.forEach(p => {
-            p.busted = false;
-            p.banked = false;
-        });
-        activePlayerIndex = 0;
-    }
     
     sendGameState();
 }
