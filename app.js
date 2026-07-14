@@ -14,6 +14,7 @@ let currentTurnCards = [];
 let hasDouble = false;
 let hasHeart = false;
 let isGameOver = false;
+let isProcessingAction = false; // Evita clic multipli durante le animazioni temporizzate
 
 // Configurazione mazzo Flip 7 standard
 const CARD_TYPES = {
@@ -59,7 +60,6 @@ function createDeck() {
 
 // --- LOGICA DI RETE (PEERJS) ---
 
-// Inizializza PeerJS con ID personalizzato (se fornito)
 function initPeer(customId, callback) {
     peer = new Peer(customId, {
         host: '0.peerjs.com',
@@ -76,7 +76,6 @@ function initPeer(customId, callback) {
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
         if (err.type === 'unavailable-id') {
-            // Se per sfortuna l'ID corto è già occupato, ne genera un altro (solo per l'Host)
             if (isHost) {
                 console.log("ID occupato, tentativo con un nuovo ID...");
                 startHost();
@@ -92,7 +91,7 @@ function initPeer(customId, callback) {
 // Avvia come Host
 function startHost() {
     myNickname = prompt("Inserisci il tuo Nickname:") || "Host";
-    const shortId = generateShortId(); // Genera l'ID corto di 4 caratteri
+    const shortId = generateShortId();
     
     isHost = true;
     
@@ -102,13 +101,11 @@ function startHost() {
         document.getElementById('btn-join').disabled = true;
         document.getElementById('join-id').disabled = true;
         
-        // Reset della lista giocatori se l'host viene riavviato
         players = [{ id: id, name: myNickname, score: 0, active: true }];
         updatePlayerListUI();
         document.getElementById('player-list-container').style.display = 'block';
         document.getElementById('btn-start-game').style.display = 'inline-block';
         
-        // Ascolta le connessioni in entrata
         peer.on('connection', (connection) => {
             connections.push(connection);
             setupHostConnection(connection);
@@ -131,6 +128,9 @@ function setupHostConnection(connection) {
             }
         }
         
+        // Se stiamo già processando un'animazione temporizzata, rifiuta i comandi
+        if (isProcessingAction) return;
+
         if (data.type === 'ACTION_FLIP') {
             handleFlipAction();
         }
@@ -150,7 +150,7 @@ function setupHostConnection(connection) {
 
 // Unisciti come Client
 function joinGame() {
-    const hostId = document.getElementById('join-id').value.trim().toUpperCase(); // Converte in maiuscolo
+    const hostId = document.getElementById('join-id').value.trim().toUpperCase();
     if (!hostId) {
         alert("Inserisci un ID Host valido!");
         return;
@@ -160,7 +160,6 @@ function joinGame() {
     
     isHost = false;
     
-    // Il client si registra con un ID casuale di sistema, ma si connette all'ID corto dell'Host
     initPeer(undefined, (id) => {
         conn = peer.connect(hostId);
         
@@ -186,9 +185,14 @@ function joinGame() {
                 players = data.players;
                 activePlayerIndex = data.activePlayerIndex;
                 currentTurnCards = data.currentTurnCards;
+                isProcessingAction = data.isProcessingAction || false;
                 updateScoresUI();
                 renderCurrentCards();
                 updateTurnControls();
+            }
+            if (data.type === 'GAME_OVER') {
+                // Mostra il popup di vittoria a tutti i client
+                alert(`Fine Partita!\n\nIl giocatore ${data.winnerName} ha vinto con ${data.score} punti!`);
             }
         });
 
@@ -253,13 +257,17 @@ function renderCurrentCards() {
 }
 
 function updateTurnControls() {
+    // Se stiamo aspettando la risoluzione di un'animazione o non è il nostro turno, disabilita i controlli
     const isMyTurn = (players[activePlayerIndex] && players[activePlayerIndex].id === myPeerId);
     
-    document.getElementById('btn-flip').disabled = !isMyTurn;
-    document.getElementById('btn-stop').disabled = !isMyTurn || currentTurnCards.length === 0;
+    document.getElementById('btn-flip').disabled = !isMyTurn || isProcessingAction;
+    document.getElementById('btn-stop').disabled = !isMyTurn || currentTurnCards.length === 0 || isProcessingAction;
     
     const turnIndicator = document.getElementById('turn-indicator');
-    if (isMyTurn) {
+    if (isProcessingAction) {
+        turnIndicator.innerText = "Svelando la carta...";
+        turnIndicator.style.backgroundColor = '#d2691e';
+    } else if (isMyTurn) {
         turnIndicator.innerText = "Tocca a te! Gira una carta o fermati.";
         turnIndicator.style.backgroundColor = '#ffd700';
     } else {
@@ -279,6 +287,7 @@ function startGame() {
     currentTurnCards = [];
     hasDouble = false;
     hasHeart = false;
+    isProcessingAction = false;
     
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('table').style.display = 'block';
@@ -291,7 +300,8 @@ function sendGameState() {
     const state = {
         players: players,
         activePlayerIndex: activePlayerIndex,
-        currentTurnCards: currentTurnCards
+        currentTurnCards: currentTurnCards,
+        isProcessingAction: isProcessingAction
     };
     
     if (isHost) {
@@ -304,6 +314,8 @@ function sendGameState() {
 
 // Azione di Pesca (Flip)
 function playerFlip() {
+    if (isProcessingAction) return; // Protezione da doppio clic veloci
+
     if (isHost) {
         handleFlipAction();
     } else {
@@ -335,33 +347,45 @@ function handleFlipAction() {
         hasHeart = true;
     }
     
-    if (isBust) {
-        if (hasHeart) {
-            hasHeart = false;
-            const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
-            if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
-            alert("Sballato! Ma la carta Cuore ti ha salvato la vita!");
-        } else {
-            alert("Sballato (Bust)! Fai 0 punti in questo turno.");
-            currentTurnCards = [];
-            hasDouble = false;
-            hasHeart = false;
-            nextTurn();
-            return;
-        }
-    }
-    
-    if (card.type === CARD_TYPES.FREEZE) {
-        alert("Hai pescato un Freeze! Il tuo turno termina qui con successo.");
-        handleStopAction();
-        return;
-    }
-    
+    // Mostriamo subito la carta pescata a tutti prima di applicare gli effetti
+    isProcessingAction = true;
     sendGameState();
+
+    // Se si tratta di una situazione che termina il turno (Sballo o Freeze), attendiamo 1.5 secondi
+    if (isBust || card.type === CARD_TYPES.FREEZE) {
+        setTimeout(() => {
+            isProcessingAction = false;
+            
+            if (isBust) {
+                if (hasHeart) {
+                    hasHeart = false;
+                    const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
+                    if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
+                    alert("Sballato! Ma la carta Cuore ti ha salvato la vita!");
+                    sendGameState();
+                } else {
+                    alert("Sballato (Bust)! Fai 0 punti in questo turno.");
+                    currentTurnCards = [];
+                    hasDouble = false;
+                    hasHeart = false;
+                    nextTurn();
+                }
+            } else if (card.type === CARD_TYPES.FREEZE) {
+                alert("Hai pescato un Freeze! Il tuo turno termina qui con successo.");
+                handleStopAction();
+            }
+        }, 1500); // 1500 millisecondi (1.5 secondi) di attesa prima del popup
+    } else {
+        // Se è una carta normale, sblocchiamo subito l'azione
+        isProcessingAction = false;
+        sendGameState();
+    }
 }
 
 // Azione di Stop (Bank)
 function playerStop() {
+    if (isProcessingAction) return;
+
     if (isHost) {
         handleStopAction();
     } else {
@@ -384,14 +408,23 @@ function handleStopAction() {
     
     players[activePlayerIndex].score += turnScore;
     
-    // Reset stato del turno corrente
     currentTurnCards = [];
     hasDouble = false;
     hasHeart = false;
     
     // Controlla se qualcuno ha raggiunto la soglia di vittoria (200 punti)
     if (players[activePlayerIndex].score >= 200) {
-        alert(`Il giocatore ${players[activePlayerIndex].name} ha vinto la partita raggiungendo ${players[activePlayerIndex].score} punti!\nLa partita ricomincerà ora da zero!`);
+        // 1. Invia il messaggio di fine partita a tutti i client
+        broadcast({ 
+            type: 'GAME_OVER', 
+            winnerName: players[activePlayerIndex].name, 
+            score: players[activePlayerIndex].score 
+        });
+        
+        // 2. Mostra il popup anche all'Host
+        alert(`Fine Partita!\n\nIl giocatore ${players[activePlayerIndex].name} ha vinto con ${players[activePlayerIndex].score} punti!`);
+        
+        // 3. Resetta tutto
         resetWholeGame();
         return;
     }
@@ -403,17 +436,14 @@ function handleStopAction() {
 function resetWholeGame() {
     if (!isHost) return;
     
-    // Azzera i punteggi di tutti i giocatori
     players.forEach(p => p.score = 0);
-    
-    // Rigenera e mischia il mazzo
     deck = createDeck();
     activePlayerIndex = 0;
     currentTurnCards = [];
     hasDouble = false;
     hasHeart = false;
+    isProcessingAction = false;
     
-    // Notifica tutti del riavvio e aggiorna lo schermo
     sendGameState();
 }
 
