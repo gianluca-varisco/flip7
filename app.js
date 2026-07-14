@@ -51,7 +51,13 @@ function createDeck() {
 
 // Inizializza PeerJS
 function initPeer(callback) {
-    peer = new Peer();
+    // Usiamo una configurazione esplicita e sicura per il server di PeerJS
+    peer = new Peer(undefined, {
+        host: '0.peerjs.com',
+        port: 443,
+        secure: true,
+        pingInterval: 5000
+    });
     
     peer.on('open', (id) => {
         myPeerId = id;
@@ -60,7 +66,7 @@ function initPeer(callback) {
 
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
-        alert("Errore di connessione: " + err.type);
+        alert("Errore di connessione a PeerJS: " + err.type);
     });
 }
 
@@ -357,10 +363,9 @@ function handleStopAction() {
     hasDouble = false;
     hasHeart = false;
     
-    // Controlla se qualcuno ha raggiunto la soglia di vittoria (es. 200 punti)
+    // Controlla se qualcuno ha raggiunto la soglia di vittoria (200 punti)
     if (players[activePlayerIndex].score >= 200) {
         alert(`Il giocatore ${players[activePlayerIndex].name} ha vinto la partita raggiungendo ${players[activePlayerIndex].score} punti!`);
-        // Puoi reimpostare il gioco qui se necessario
     }
     
     nextTurn();
@@ -370,8 +375,3 @@ function nextTurn() {
     activePlayerIndex = (activePlayerIndex + 1) % players.length;
     sendGameState();
 }
-"""
-
-with open("app.js", "w", encoding="utf-8") as f:
-    f.write(js_content)
-print("File app.js creato correttamente.")
