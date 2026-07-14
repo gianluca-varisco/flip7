@@ -5,6 +5,7 @@ let connections = []; // Lista di tutte le connessioni attive (usato dall'Host)[
 let isHost = false;
 let myPeerId = "";
 let myNickname = "";
+let inviteRoomId = "";
 
 // Stato del Gioco
 let players = []; // { id, name, score, active, busted, banked, cards: [], hasDouble, hasHeart }
@@ -20,6 +21,18 @@ const CARD_TYPES = {
     DOUBLE: 'double',
     HEART: 'heart',
     THREE_STRIKES: 'three_strikes' // Carta speciale[cite: 1]
+};
+
+// Controllo all'avvio: se c'è un parametro "?room=ABCD" nel link, imposta l'interfaccia per entrare direttamente
+window.onload = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room');
+    if (room) {
+        document.getElementById('join-id').value = room.toUpperCase();
+        document.getElementById('btn-host').style.display = 'none';
+        document.getElementById('lobby-divider').style.display = 'none';
+        document.getElementById('host-id-display').innerText = "Rilevato invito alla stanza: " + room.toUpperCase();
+    }
 };
 
 // Genera un ID corto di 4 caratteri
@@ -72,16 +85,22 @@ function initPeer(customId, callback) {
         callback(id);
     });
 
+    // Gestione della disconnessione per salvare la sessione mobile in background
+    peer.on('disconnected', () => {
+        console.log("Peer disconnesso dal server dei segnali. Tentativo di riconnessione...");
+        peer.reconnect();
+    });
+
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
         if (err.type === 'unavailable-id') {
             if (isHost) {
                 startHost();
             } else {
-                alert("Impossibile connettersi. L'ID potrebbe essere errato.");
+                alert("Impossibile connettersi. L'ID potrebbe essere scaduto o errato.");
             }
         } else {
-            alert("Errore di connessione a PeerJS: " + err.type);
+            alert("Errore di connessione: " + err.type);
         }
     });
 }
@@ -89,6 +108,7 @@ function initPeer(customId, callback) {
 function startHost() {
     myNickname = prompt("Inserisci il tuo Nickname:") || "Host";
     const shortId = generateShortId();
+    inviteRoomId = shortId;
     
     isHost = true;
     
@@ -97,6 +117,9 @@ function startHost() {
         document.getElementById('btn-host').disabled = true;
         document.getElementById('btn-join').disabled = true;
         document.getElementById('join-id').disabled = true;
+        
+        // Mostra il tasto copia link
+        document.getElementById('btn-copy-link').style.display = 'inline-block';
         
         players = [{ id: id, name: myNickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false }];
         updatePlayerListUI();
@@ -107,6 +130,20 @@ function startHost() {
             connections.push(connection);
             setupHostConnection(connection);
         });
+    });
+}
+
+function copyInviteLink() {
+    if (!inviteRoomId) return;
+    const inviteUrl = window.location.origin + window.location.pathname + "?room=" + inviteRoomId;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+        const btn = document.getElementById('btn-copy-link');
+        btn.innerText = "✅ Link Copiato!";
+        setTimeout(() => {
+            btn.innerText = "🔗 Copia Link di Invito";
+        }, 2000);
+    }).catch(err => {
+        alert("Impossibile copiare automaticamente. Condividi questo link: " + inviteUrl);
     });
 }
 
@@ -199,7 +236,7 @@ function joinGame() {
         });
 
         conn.on('close', () => {
-            alert("Connessione con l'Host interrotta.");
+            alert("Connessione con l'Host interrotta. Tentativo di ripristino o ricarica della pagina...");
             location.reload();
         });
     });
@@ -454,7 +491,6 @@ function handleFlipAction() {
                 activePlayer.cards.pop();
                 sendGameState();
             } else {
-                // Mantiene isProcessingAction su true per bloccare i controlli durante la scelta
                 sendGameState(shooter.id, eligibleTargets.map(t => ({ id: t.id, name: t.name })));
             }
         }, 1500);
@@ -499,7 +535,6 @@ function executeThreeStrikesAssignment(targetId) {
     
     if (!targetPlayer) return;
     
-    // Rimuove il "Pesca 3" dalla fila del giocatore che l'ha pescato
     shooterPlayer.cards = shooterPlayer.cards.filter(c => c.type !== CARD_TYPES.THREE_STRIKES);
     
     broadcast({ 
@@ -508,10 +543,7 @@ function executeThreeStrikesAssignment(targetId) {
     });
     alert(`${shooterPlayer.name} ha lanciato una carta "PESCA 3" su ${targetPlayer.name}!`);
 
-    // Memorizza chi deve tornare a giocare dopo la punizione
     const originalActiveIndex = activePlayerIndex;
-    
-    // Sposta temporaneamente il mirino sul bersaglio
     activePlayerIndex = players.indexOf(targetPlayer);
     
     let strikesDrawn = 0;
@@ -551,7 +583,6 @@ function executeThreeStrikesAssignment(targetId) {
                         targetPlayer.hasHeart = false;
                         alert(`${targetPlayer.name} ha sballato a causa del "Pesca 3"!`);
                         
-                        // Sblocca lo stato prima di reimpostare l'indice e passare il turno
                         isProcessingAction = false;
                         activePlayerIndex = originalActiveIndex;
                         nextTurn();
@@ -563,15 +594,12 @@ function executeThreeStrikesAssignment(targetId) {
             }, 1200);
         } else {
             alert(`${targetPlayer.name} è sopravvissuto al "Pesca 3"!`);
-            
-            // Sblocca lo stato prima di reimpostare l'indice e passare il turno
             isProcessingAction = false;
             activePlayerIndex = originalActiveIndex;
             nextTurn();
         }
     }
 
-    // Ritardo minimo per rendere l'inizio della pescata visibile
     setTimeout(drawStrike, 800);
 }
 

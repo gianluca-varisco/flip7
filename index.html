@@ -19,14 +19,15 @@
                 <div class="control-group">
                     <button id="btn-host" onclick="startHost()">Ospita una Partita (Host)</button>
                     <p id="host-id-display" class="highlight-text"></p>
+                    <button id="btn-copy-link" style="display:none; margin-top: 10px;" onclick="copyInviteLink()">🔗 Copia Link di Invito</button>
                 </div>
-                <div class="divider">oppure</div>
-                <div class="control-group">
+                <div class="divider" id="lobby-divider">oppure</div>
+                <div class="control-group" id="join-group">
                     <input type="text" id="join-id" placeholder="Inserisci l'ID dell'Host">
                     <button id="btn-join" onclick="joinGame()">Unisciti alla Partita</button>
                 </div>
             </div>
-            <div id="player-list-container" style="display:none;">
+            <div id="player-list-container" style="display:none; margin-top: 20px;">
                 <h3>Giocatori Connessi:</h3>
                 <ul id="player-list"></ul>
                 <button id="btn-start-game" style="display:none;" onclick="startGame()">Inizia Partita</button>
