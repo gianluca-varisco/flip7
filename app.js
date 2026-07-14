@@ -1,4 +1,4 @@
-js_content = """// Configurazione e Stato Globale
+// Configurazione e Stato Globale
 let peer = null;
 let conn = null; // Connessione singola per chi si unisce (Client)
 let connections = []; // Lista di connessioni per l'Host
