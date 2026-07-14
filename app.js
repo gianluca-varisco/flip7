@@ -7,12 +7,9 @@ let myPeerId = "";
 let myNickname = "";
 
 // Stato del Gioco
-let players = []; // { id, name, score, active, busted, banked }
+let players = []; // { id, name, score, active, busted, banked, cards: [], hasDouble, hasHeart }
 let activePlayerIndex = 0;
 let deck = [];
-let currentTurnCards = [];
-let hasDouble = false;
-let hasHeart = false;
 let isGameOver = false;
 let isProcessingAction = false; // Evita clic multipli durante le animazioni temporizzate
 
@@ -22,7 +19,7 @@ const CARD_TYPES = {
     FREEZE: 'freeze',
     DOUBLE: 'double',
     HEART: 'heart',
-    THREE_STRIKES: 'three_strikes' // Nuova carta speciale
+    THREE_STRIKES: 'three_strikes' // Carta speciale
 };
 
 // Genera un ID corto di 4 caratteri
@@ -101,7 +98,7 @@ function startHost() {
         document.getElementById('btn-join').disabled = true;
         document.getElementById('join-id').disabled = true;
         
-        players = [{ id: id, name: myNickname, score: 0, active: true, busted: false, banked: false }];
+        players = [{ id: id, name: myNickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false }];
         updatePlayerListUI();
         document.getElementById('player-list-container').style.display = 'block';
         document.getElementById('btn-start-game').style.display = 'inline-block';
@@ -121,7 +118,7 @@ function setupHostConnection(connection) {
     connection.on('data', (data) => {
         if (data.type === 'SEND_NICKNAME') {
             if (!players.some(p => p.id === connection.peer)) {
-                players.push({ id: connection.peer, name: data.nickname, score: 0, active: true, busted: false, banked: false });
+                players.push({ id: connection.peer, name: data.nickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false });
                 updatePlayerListUI();
                 broadcast({ type: 'UPDATE_PLAYERS', players: players });
             }
@@ -182,10 +179,9 @@ function joinGame() {
             if (data.type === 'UPDATE_STATE') {
                 players = data.players;
                 activePlayerIndex = data.activePlayerIndex;
-                currentTurnCards = data.currentTurnCards;
                 isProcessingAction = data.isProcessingAction || false;
                 updateScoresUI();
-                renderCurrentCards();
+                renderAllPlayersCards();
                 updateTurnControls();
                 
                 // Gestione visibilità selezione bersaglio
@@ -245,32 +241,80 @@ function updateScoresUI() {
     });
 }
 
-function renderCurrentCards() {
-    const container = document.getElementById('current-row');
-    container.innerHTML = "";
-    currentTurnCards.forEach(card => {
-        const cardDiv = document.createElement('div');
-        cardDiv.className = 'card';
-        
-        if (card.type === CARD_TYPES.FREEZE) cardDiv.classList.add('special-freeze');
-        if (card.type === CARD_TYPES.DOUBLE) cardDiv.classList.add('special-double');
-        if (card.type === CARD_TYPES.HEART) cardDiv.classList.add('special-heart');
-        if (card.type === CARD_TYPES.THREE_STRIKES) cardDiv.classList.add('special-heart'); // Arancione
-        
-        cardDiv.innerHTML = `
+// Genera il codice HTML per una singola carta
+function getCardHTML(card, isMini = false) {
+    let classes = 'card';
+    if (isMini) classes += ' mini-card';
+    if (card.type === CARD_TYPES.FREEZE) classes += ' special-freeze';
+    if (card.type === CARD_TYPES.DOUBLE) classes += ' special-double';
+    if (card.type === CARD_TYPES.HEART) classes += ' special-heart';
+    if (card.type === CARD_TYPES.THREE_STRIKES) classes += ' special-heart'; // Arancio/Rosso
+    
+    if (isMini) {
+        return `<div class="${classes}"><div class="card-value">${card.value}</div></div>`;
+    }
+    return `
+        <div class="${classes}">
             <div class="card-corner">${card.value}</div>
             <div class="card-value">${card.value}</div>
             <div class="card-corner bottom">${card.value}</div>
-        `;
-        container.appendChild(cardDiv);
+        </div>
+    `;
+}
+
+// Renderizza sia la fila dell'utente locale (in grande) sia gli avversari (in piccolo)
+function renderAllPlayersCards() {
+    const myRowContainer = document.getElementById('current-row');
+    const opponentsContainer = document.getElementById('opponents-row');
+    
+    myRowContainer.innerHTML = "";
+    opponentsContainer.innerHTML = "";
+    
+    const me = players.find(p => p.id === myPeerId);
+    
+    // 1. Renderizza la MIA fila personale in grande
+    if (me && me.cards) {
+        me.cards.forEach(card => {
+            myRowContainer.innerHTML += getCardHTML(card, false);
+        });
+    }
+    
+    // 2. Renderizza le file degli altri giocatori in piccolo
+    players.forEach(p => {
+        if (p.id !== myPeerId) {
+            const oppDiv = document.createElement('div');
+            oppDiv.className = 'opponent-box';
+            if (p.busted) oppDiv.classList.add('opp-busted');
+            if (p.banked) oppDiv.classList.add('opp-banked');
+            
+            let statusText = "";
+            if (p.busted) statusText = " [SBALLATO]";
+            if (p.banked) statusText = " [FERMO]";
+            
+            let cardsHTML = "";
+            if (p.cards && p.cards.length > 0) {
+                p.cards.forEach(card => {
+                    cardsHTML += getCardHTML(card, true);
+                });
+            } else {
+                cardsHTML = `<div style="font-style: italic; color: #aaa; font-size: 13px;">Nessuna carta</div>`;
+            }
+            
+            oppDiv.innerHTML = `
+                <h4>${p.name}${statusText}</h4>
+                <div class="opponent-cards-row">${cardsHTML}</div>
+            `;
+            opponentsContainer.appendChild(oppDiv);
+        }
     });
 }
 
 function updateTurnControls() {
     const isMyTurn = (players[activePlayerIndex] && players[activePlayerIndex].id === myPeerId);
+    const me = players.find(p => p.id === myPeerId);
     
     document.getElementById('btn-flip').disabled = !isMyTurn || isProcessingAction;
-    document.getElementById('btn-stop').disabled = !isMyTurn || currentTurnCards.length === 0 || isProcessingAction;
+    document.getElementById('btn-stop').disabled = !isMyTurn || !me || me.cards.length === 0 || isProcessingAction;
     
     const turnIndicator = document.getElementById('turn-indicator');
     if (isProcessingAction) {
@@ -322,15 +366,15 @@ function startGame() {
     
     deck = createDeck();
     activePlayerIndex = 0;
-    currentTurnCards = [];
-    hasDouble = false;
-    hasHeart = false;
     isProcessingAction = false;
     
     players.forEach(p => {
         p.score = 0;
         p.busted = false;
         p.banked = false;
+        p.cards = [];
+        p.hasDouble = false;
+        p.hasHeart = false;
     });
     
     document.getElementById('lobby').style.display = 'none';
@@ -344,7 +388,6 @@ function sendGameState(customTargetId = null, eligibleTargets = []) {
     const state = {
         players: players,
         activePlayerIndex: activePlayerIndex,
-        currentTurnCards: currentTurnCards,
         isProcessingAction: isProcessingAction,
         showTargetSelectionFor: customTargetId,
         eligibleTargets: eligibleTargets
@@ -352,7 +395,7 @@ function sendGameState(customTargetId = null, eligibleTargets = []) {
     
     if (isHost) {
         updateScoresUI();
-        renderCurrentCards();
+        renderAllPlayersCards();
         updateTurnControls();
         
         if (customTargetId === myPeerId) {
@@ -382,21 +425,22 @@ function handleFlipAction() {
     
     const card = deck.pop();
     let isBust = false;
+    const activePlayer = players[activePlayerIndex];
     
     if (card.type === CARD_TYPES.NUMBER) {
-        const duplicate = currentTurnCards.find(c => c.type === CARD_TYPES.NUMBER && c.value === card.value);
+        const duplicate = activePlayer.cards.find(c => c.type === CARD_TYPES.NUMBER && c.value === card.value);
         if (duplicate) {
             isBust = true;
         }
     }
     
-    currentTurnCards.push(card);
+    activePlayer.cards.push(card);
     
     if (card.type === CARD_TYPES.DOUBLE) {
-        hasDouble = true;
+        activePlayer.hasDouble = true;
     }
     if (card.type === CARD_TYPES.HEART) {
-        hasHeart = true;
+        activePlayer.hasHeart = true;
     }
     
     isProcessingAction = true;
@@ -406,13 +450,12 @@ function handleFlipAction() {
     if (card.type === CARD_TYPES.THREE_STRIKES) {
         setTimeout(() => {
             const shooter = players[activePlayerIndex];
-            // I bersagli validi includono tutti tranne chi ha già sballato (busted) e chi ha tirato la carta
             const eligibleTargets = players.filter(p => p.id !== shooter.id && !p.busted);
             
             if (eligibleTargets.length === 0) {
                 alert("Non ci sono altri giocatori validi a cui assegnare la carta! Viene scartata.");
                 isProcessingAction = false;
-                currentTurnCards.pop();
+                activePlayer.cards.pop();
                 sendGameState();
             } else {
                 sendGameState(shooter.id, eligibleTargets.map(t => ({ id: t.id, name: t.name })));
@@ -427,15 +470,19 @@ function handleFlipAction() {
             isProcessingAction = false;
             
             if (isBust) {
-                if (hasHeart) {
-                    hasHeart = false;
-                    const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
-                    if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
+                if (activePlayer.hasHeart) {
+                    activePlayer.hasHeart = false;
+                    const heartIdx = activePlayer.cards.findIndex(c => c.type === CARD_TYPES.HEART);
+                    if (heartIdx > -1) activePlayer.cards.splice(heartIdx, 1);
                     alert("Sballato! Ma la carta Cuore ti ha salvato la vita!");
                     nextTurn();
                 } else {
-                    players[activePlayerIndex].busted = true;
-                    alert("Sballato (Bust)! Fai 0 punti in questo turno.");
+                    activePlayer.busted = true;
+                    // Chi sballa perde le sue carte per questo round
+                    activePlayer.cards = [];
+                    activePlayer.hasDouble = false;
+                    activePlayer.hasHeart = false;
+                    alert(`${activePlayer.name} ha sballato (Bust)!`);
                     nextTurn();
                 }
             } else if (card.type === CARD_TYPES.FREEZE) {
@@ -444,7 +491,7 @@ function handleFlipAction() {
             }
         }, 1500);
     } else {
-        // Nessuno sballo e nessuna azione speciale: passa il turno al giocatore successivo (un giro a testa)
+        // Pescata regolare: passa il turno al giocatore successivo
         setTimeout(() => {
             isProcessingAction = false;
             nextTurn();
@@ -458,8 +505,8 @@ function executeThreeStrikesAssignment(targetId) {
     
     if (!targetPlayer) return;
     
-    // Rimuovi la carta speciale dalla fila comune
-    currentTurnCards = currentTurnCards.filter(c => c.type !== CARD_TYPES.THREE_STRIKES);
+    // Rimuove la carta speciale dalla fila del giocatore che l'ha pescata
+    shooterPlayer.cards = shooterPlayer.cards.filter(c => c.type !== CARD_TYPES.THREE_STRIKES);
     
     broadcast({ 
         type: 'ALERT', 
@@ -467,10 +514,9 @@ function executeThreeStrikesAssignment(targetId) {
     });
     alert(`${shooterPlayer.name} ha lanciato una carta "PESCA 3" su ${targetPlayer.name}!`);
 
-    // Memorizza chi era il giocatore che ha lanciato la carta
     const originalActiveIndex = activePlayerIndex;
     
-    // Passa temporaneamente il focus sul bersaglio
+    // Spostiamo temporaneamente l'azione sul bersaglio
     activePlayerIndex = players.indexOf(targetPlayer);
     
     let strikesDrawn = 0;
@@ -483,32 +529,35 @@ function executeThreeStrikesAssignment(targetId) {
             
             let isBust = false;
             if (card.type === CARD_TYPES.NUMBER) {
-                const duplicate = currentTurnCards.find(c => c.type === CARD_TYPES.NUMBER && c.value === card.value);
+                const duplicate = targetPlayer.cards.find(c => c.type === CARD_TYPES.NUMBER && c.value === card.value);
                 if (duplicate) isBust = true;
             }
             
-            currentTurnCards.push(card);
+            targetPlayer.cards.push(card);
+            
+            if (card.type === CARD_TYPES.DOUBLE) targetPlayer.hasDouble = true;
+            if (card.type === CARD_TYPES.HEART) targetPlayer.hasHeart = true;
+            
             sendGameState();
             
             setTimeout(() => {
                 if (isBust) {
-                    if (hasHeart) {
-                        hasHeart = false;
-                        const heartIdx = currentTurnCards.findIndex(c => c.type === CARD_TYPES.HEART);
-                        if (heartIdx > -1) currentTurnCards.splice(heartIdx, 1);
+                    if (targetPlayer.hasHeart) {
+                        targetPlayer.hasHeart = false;
+                        const heartIdx = targetPlayer.cards.findIndex(c => c.type === CARD_TYPES.HEART);
+                        if (heartIdx > -1) targetPlayer.cards.splice(heartIdx, 1);
                         alert(`Carta ${strikesDrawn + 1} svelata. Sballato, ma salvato dal Cuore!`);
                         strikesDrawn++;
                         drawStrike();
                     } else {
-                        // Il bersaglio ha sballato. Viene marcato come sballato ed escluso dal round.
                         targetPlayer.busted = true;
+                        targetPlayer.cards = [];
+                        targetPlayer.hasDouble = false;
+                        targetPlayer.hasHeart = false;
                         alert(`${targetPlayer.name} ha sballato a causa del "Pesca 3"!`);
                         
-                        // Ripristiniamo l'indice del turno originale (il lanciatore della carta)
                         activePlayerIndex = originalActiveIndex;
                         isProcessingAction = false;
-                        
-                        // Passiamo il turno in modo naturale dal lanciatore in poi
                         nextTurn();
                     }
                 } else {
@@ -518,12 +567,8 @@ function executeThreeStrikesAssignment(targetId) {
             }, 1200);
         } else {
             alert(`${targetPlayer.name} è sopravvissuto al "Pesca 3"!`);
-            
-            // Il bersaglio è sopravvissuto alle tre pescate. Ripristiniamo l'indice originale del lanciatore
             activePlayerIndex = originalActiveIndex;
             isProcessingAction = false;
-            
-            // Il lanciatore ha terminato il suo turno pescando la carta, quindi si passa il turno
             nextTurn();
         }
     }
@@ -542,8 +587,9 @@ function playerStop() {
 }
 
 function handleStopAction() {
+    const activePlayer = players[activePlayerIndex];
     let turnScore = 0;
-    const numberCards = currentTurnCards.filter(c => c.type === CARD_TYPES.NUMBER);
+    const numberCards = activePlayer.cards.filter(c => c.type === CARD_TYPES.NUMBER);
     
     numberCards.forEach(c => {
         turnScore += c.value;
@@ -551,25 +597,25 @@ function handleStopAction() {
     
     if (numberCards.length >= 7) {
         turnScore += 15;
-        alert(`Bonus Flip 7! Avete collezionato ${numberCards.length} carte numeriche diverse: +15 punti bonus!`);
+        alert(`Bonus Flip 7! Hai collezionato ${numberCards.length} carte numeriche diverse: +15 punti bonus!`);
     }
     
-    if (hasDouble) {
+    if (activePlayer.hasDouble) {
         turnScore *= 2;
     }
     
-    // Incrementa correttamente i punti del giocatore che ha premuto "Fermati"
-    players[activePlayerIndex].score += turnScore;
-    players[activePlayerIndex].banked = true;
+    // Assegna i punti unicamente al giocatore corrente
+    activePlayer.score += turnScore;
+    activePlayer.banked = true;
     
-    if (players[activePlayerIndex].score >= 200) {
+    if (activePlayer.score >= 200) {
         broadcast({ 
             type: 'GAME_OVER', 
-            winnerName: players[activePlayerIndex].name, 
-            score: players[activePlayerIndex].score 
+            winnerName: activePlayer.name, 
+            score: activePlayer.score 
         });
         
-        alert(`Fine Partita!\n\nIl giocatore ${players[activePlayerIndex].name} ha vinto con ${players[activePlayerIndex].score} punti!`);
+        alert(`Fine Partita!\n\nIl giocatore ${activePlayer.name} ha vinto con ${activePlayer.score} punti!`);
         resetWholeGame();
         return;
     }
@@ -584,34 +630,34 @@ function resetWholeGame() {
         p.score = 0;
         p.busted = false;
         p.banked = false;
+        p.cards = [];
+        p.hasDouble = false;
+        p.hasHeart = false;
     });
     deck = createDeck();
     activePlayerIndex = 0;
-    currentTurnCards = [];
-    hasDouble = false;
-    hasHeart = false;
     isProcessingAction = false;
     
     sendGameState();
 }
 
 function nextTurn() {
-    // Controlla se TUTTI i giocatori del round sono sballati o si sono fermati volontariamente (banked)
+    // Controlla se tutti sono sballati o fermi
     if (players.every(p => p.busted || p.banked)) {
-        alert("Il round è terminato! Tutte le carte accumulate sul tavolo vengono rimosse per il prossimo round.");
+        alert("Il round è terminato! Le carte di tutti vengono resettate per il prossimo round.");
         players.forEach(p => {
             p.busted = false;
             p.banked = false;
+            p.cards = [];
+            p.hasDouble = false;
+            p.hasHeart = false;
         });
-        currentTurnCards = [];
-        hasDouble = false;
-        hasHeart = false;
         activePlayerIndex = 0;
         sendGameState();
         return;
     }
 
-    // Trova il prossimo giocatore attivo (non sballato e non fermato)
+    // Passa al prossimo attivo
     let attempts = 0;
     do {
         activePlayerIndex = (activePlayerIndex + 1) % players.length;
