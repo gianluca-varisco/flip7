@@ -33,6 +33,12 @@
             </div>
         </div>
 
+        <!-- Pannello per scegliere a chi assegnare la carta "Pesca 3" (Spostato qui per evitare conflitti DOM) -->
+        <div id="target-selection-area" style="display: none; text-align: center; margin: 15px 0; padding: 10px; background: rgba(210, 105, 30, 0.2); border: 1px dashed #d2691e; border-radius: 6px;">
+            <p style="color: #ffd700; font-weight: bold; margin-top: 0;">Scegli a chi assegnare il "Pesca 3":</p>
+            <div id="target-buttons"></div>
+        </div>
+
         <!-- Tavolo da Gioco (Nascosto all'inizio) -->
         <div id="table" class="panel" style="display: none;">
             <div id="turn-indicator">In attesa dell'inizio...</div>
@@ -51,12 +57,6 @@
                         <button id="btn-stop" onclick="playerStop()" disabled>FERMATI (BANK)</button>
                     </div>
 
-                    <!-- Pannello per scegliere a chi assegnare la carta "Pesca 3" -->
-                    <div id="target-selection-area" style="display: none; text-align: center; margin: 15px 0; padding: 10px; background: rgba(210, 105, 30, 0.2); border: 1px dashed #d2691e; border-radius: 6px;">
-                        <p style="color: #ffd700; font-weight: bold; margin-top: 0;">Scegli a chi assegnare il "Pesca 3":</p>
-                    <div id="target-buttons"></div>
-                    </div>
-
                     <div class="current-row-container">
                         <h3>La tua fila corrente:</h3>
                         <div id="current-row" class="card-row"></div>
@@ -66,6 +66,7 @@
         </div>
     </div>
 
+    <!-- Aggiornata versione fittizia (?v=4.0) per forzare l'azzeramento della cache su tutti i browser -->
     <script src="app.js"></script>
 </body>
 </html>
