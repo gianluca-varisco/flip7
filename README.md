@@ -7,7 +7,7 @@ Clicca sul link qui sotto per aprire il gioco e iniziare a sfidare i tuoi amici:
 
 👉 **[CLICCA QUI PER GIOCARE A FLIP 7](https://gianluca-varisco.github.io/flip7/)** 👈
 
-*(Ricordati di sostituire "IL_TUO_USERNAME_GITHUB" con il tuo username se stai usando un fork personale!)*
+
 
 ---
 
