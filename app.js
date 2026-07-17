@@ -88,11 +88,21 @@ function initPeer(customId, callback) {
         try { peer.destroy(); } catch(e) {}
     }
 
+    // Configurazione con server STUN pubblici per superare i firewall dei telefoni
     peer = new Peer(customId, {
         host: '0.peerjs.com',
         port: 443,
         secure: true,
-        pingInterval: 3000
+        pingInterval: 3000,
+        config: {
+            'iceServers': [
+                { 'urls': 'stun:stun.l.google.com:19302' },
+                { 'urls': 'stun:stun1.l.google.com:19302' },
+                { 'urls': 'stun:stun2.l.google.com:19302' },
+                { 'urls': 'stun:stun3.l.google.com:19302' },
+                { 'urls': 'stun:stun4.l.google.com:19302' }
+            ]
+        }
     });
     
     peer.on('open', (id) => {
@@ -108,8 +118,6 @@ function initPeer(customId, callback) {
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
         
-        // Se l'ID è temporaneamente occupato perché siamo tornati da WhatsApp,
-        // non cambiamo ID (altrimenti il link si rompe), ma riproviamo tra 3 secondi.
         if (err.type === 'unavailable-id') {
             if (isHost) {
                 console.log("ID occupato dal vecchio processo. Tentativo di riconnessione tra 3 secondi...");
