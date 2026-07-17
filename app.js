@@ -94,7 +94,8 @@ function initPeer(customId, callback) {
         secure: true,
         pingInterval: 3000,
         config: {
-            // Forziamo l'uso esclusivo del relay (TURN) per evitare che Wind e il router di casa si blocchino a vicenda
+            // CORREZIONE CHIAVE: iceTransportPolicy DEVE stare dentro 'config'
+            // Questo forza WebRTC a non usare la connessione diretta e a passare subito dal TURN
             'iceTransportPolicy': 'relay', 
             'iceServers': [
                 // Server TURN gratuiti dall'Open Relay Project
