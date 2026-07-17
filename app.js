@@ -95,13 +95,30 @@ function initPeer(customId, callback) {
         secure: true,
         pingInterval: 3000,
         config: {
+            // Inseriamo i tuoi server STUN e TURN privati di Metered per sbloccare PC <-> Telefono Wind
             'iceServers': [
-                { 'urls': 'stun:stun.l.google.com:19302' },
-                { 'urls': 'stun:stun1.l.google.com:19302' },
                 {
-                    'urls': 'turn:openrelay.metered.ca:443',
-                    'username': 'openrelayproject',
-                    'credential': 'openrelayproject'
+                    'urls': 'stun:stun.relay.metered.ca:80'
+                },
+                {
+                    'urls': 'turn:global.relay.metered.ca:80',
+                    'username': '35098f37f93a6fd59b3bf2d3',
+                    'credential': 'C5NDV3NAO9MK+HZD'
+                },
+                {
+                    'urls': 'turn:global.relay.metered.ca:80?transport=tcp',
+                    'username': '35098f37f93a6fd59b3bf2d3',
+                    'credential': 'C5NDV3NAO9MK+HZD'
+                },
+                {
+                    'urls': 'turn:global.relay.metered.ca:443',
+                    'username': '35098f37f93a6fd59b3bf2d3',
+                    'credential': 'C5NDV3NAO9MK+HZD'
+                },
+                {
+                    'urls': 'turns:global.relay.metered.ca:443?transport=tcp',
+                    'username': '35098f37f93a6fd59b3bf2d3',
+                    'credential': 'C5NDV3NAO9MK+HZD'
                 }
             ]
         }
