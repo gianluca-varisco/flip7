@@ -84,6 +84,7 @@ function createDeck() {
 // --- LOGICA DI RETE (PEERJS) ---
 
 function initPeer(customId, callback) {
+    function initPeer(customId, callback) {
     if (peer) {
         try { peer.destroy(); } catch(e) {}
     }
@@ -94,18 +95,12 @@ function initPeer(customId, callback) {
         secure: true,
         pingInterval: 3000,
         config: {
-            // CORREZIONE CHIAVE: iceTransportPolicy DEVE stare dentro 'config'
-            // Questo forza WebRTC a non usare la connessione diretta e a passare subito dal TURN
-            'iceTransportPolicy': 'relay', 
+            // Rimuoviamo 'relay' forzato e lasciamo gestire a WebRTC lo switch automatico
             'iceServers': [
-                // Server TURN gratuiti dall'Open Relay Project
+                { 'urls': 'stun:stun.l.google.com:19302' },
+                { 'urls': 'stun:stun1.l.google.com:19302' },
                 {
                     'urls': 'turn:openrelay.metered.ca:443',
-                    'username': 'openrelayproject',
-                    'credential': 'openrelayproject'
-                },
-                {
-                    'urls': 'turn:openrelay.metered.ca:80',
                     'username': 'openrelayproject',
                     'credential': 'openrelayproject'
                 }
@@ -125,18 +120,11 @@ function initPeer(customId, callback) {
 
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
-        
         if (err.type === 'unavailable-id') {
-            if (isHost) {
-                console.log("ID occupato dal vecchio processo. Tentativo di riconnessione tra 3 secondi...");
-                setTimeout(() => {
-                    reconnectHost(customId);
-                }, 3000);
-            } else {
-                alert("La stanza è temporaneamente occupata. Riprova tra pochi secondi.");
-            }
+            setTimeout(() => { reconnectHost(customId); }, 3000);
         }
     });
+}
 }
 
 function startHost() {
