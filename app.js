@@ -1,7 +1,7 @@
 // Configurazione e Stato Globale
 let peer = null;
 let conn = null; // Usato dal Client per comunicare con l'Host
-let connections = []; // Lista di tutte le connessioni attive (usato dall'Host)[cite: 1]
+let connections = []; // Lista di tutte le connessioni attive (usato dall'Host)
 let isHost = false;
 let myPeerId = "";
 let myNickname = "";
@@ -12,7 +12,7 @@ let players = []; // { id, name, score, active, busted, banked, cards: [], hasDo
 let activePlayerIndex = 0;
 let deck = [];
 let isGameOver = false;
-let isProcessingAction = false; // Evita clic multipli durante le animazioni temporizzate[cite: 1]
+let isProcessingAction = false; // Evita clic multipli durante le animazioni temporizzate
 
 // Configurazione mazzo Flip 7 standard + Carta Pesca 3
 const CARD_TYPES = {
@@ -20,18 +20,35 @@ const CARD_TYPES = {
     FREEZE: 'freeze',
     DOUBLE: 'double',
     HEART: 'heart',
-    THREE_STRIKES: 'three_strikes' // Carta speciale[cite: 1]
+    THREE_STRIKES: 'three_strikes' // Carta speciale
 };
 
-// Controllo all'avvio: se c'è un parametro "?room=ABCD" nel link, imposta l'interfaccia per entrare direttamente
+// Controllo all'avvio
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room');
-    if (room) {
+    
+    // Controlla se l'host sta tornando dopo aver condiviso il link
+    const savedHostRoom = sessionStorage.getItem('host_room_id');
+    const savedHostNick = sessionStorage.getItem('host_nickname');
+
+    if (savedHostRoom && savedHostNick && !room) {
+        // Ripristina la sessione dell'Host che torna da WhatsApp
+        document.getElementById('join-group').style.display = 'none';
+        document.getElementById('lobby-divider').style.display = 'none';
+        document.getElementById('btn-host').disabled = true;
+        
+        myNickname = savedHostNick;
+        inviteRoomId = savedHostRoom;
+        isHost = true;
+        
+        reconnectHost(savedHostRoom);
+    } else if (room) {
+        // È un client invitato
         document.getElementById('join-id').value = room.toUpperCase();
         document.getElementById('btn-host').style.display = 'none';
         document.getElementById('lobby-divider').style.display = 'none';
-        document.getElementById('host-id-display').innerText = "Rilevato invito alla stanza: " + room.toUpperCase();
+        document.getElementById('host-id-display').innerText = "Stai entrando nella stanza: " + room.toUpperCase();
     }
 };
 
@@ -47,37 +64,35 @@ function generateShortId() {
 
 function createDeck() {
     let newDeck = [];
-    
-    // Carte numeriche: 1x '1', 2x '2', ... fino a 12x '12'
     for (let i = 1; i <= 12; i++) {
         for (let j = 0; j < i; j++) {
             newDeck.push({ type: CARD_TYPES.NUMBER, value: i });
         }
     }
-    
-    // Carte speciali (quantità indicative per bilanciamento)
     for (let i = 0; i < 4; i++) newDeck.push({ type: CARD_TYPES.FREEZE, value: 'FREEZE' });
     for (let i = 0; i < 3; i++) newDeck.push({ type: CARD_TYPES.DOUBLE, value: 'x2' });
     for (let i = 0; i < 3; i++) newDeck.push({ type: CARD_TYPES.HEART, value: '♥' });
-    for (let i = 0; i < 3; i++) newDeck.push({ type: CARD_TYPES.THREE_STRIKES, value: '👉 3' }); // 3 Carte Pesca Tre[cite: 1]
+    for (let i = 0; i < 3; i++) newDeck.push({ type: CARD_TYPES.THREE_STRIKES, value: '👉 3' });
     
-    // Mischia il mazzo (Fisher-Yates)
     for (let i = newDeck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
     }
-    
     return newDeck;
 }
 
 // --- LOGICA DI RETE (PEERJS) ---
 
 function initPeer(customId, callback) {
+    if (peer) {
+        try { peer.destroy(); } catch(e) {}
+    }
+
     peer = new Peer(customId, {
         host: '0.peerjs.com',
         port: 443,
         secure: true,
-        pingInterval: 5000
+        pingInterval: 3000
     });
     
     peer.on('open', (id) => {
@@ -85,22 +100,25 @@ function initPeer(customId, callback) {
         callback(id);
     });
 
-    // Gestione della disconnessione per salvare la sessione mobile in background
     peer.on('disconnected', () => {
-        console.log("Peer disconnesso dal server dei segnali. Tentativo di riconnessione...");
+        console.log("Scollegato dal server. Riconnessione...");
         peer.reconnect();
     });
 
     peer.on('error', (err) => {
         console.error("Errore PeerJS:", err);
+        
+        // Se l'ID è temporaneamente occupato perché siamo tornati da WhatsApp,
+        // non cambiamo ID (altrimenti il link si rompe), ma riproviamo tra 3 secondi.
         if (err.type === 'unavailable-id') {
             if (isHost) {
-                startHost();
+                console.log("ID occupato dal vecchio processo. Tentativo di riconnessione tra 3 secondi...");
+                setTimeout(() => {
+                    reconnectHost(customId);
+                }, 3000);
             } else {
-                alert("Impossibile connettersi. L'ID potrebbe essere scaduto o errato.");
+                alert("La stanza è temporaneamente occupata. Riprova tra pochi secondi.");
             }
-        } else {
-            alert("Errore di connessione: " + err.type);
         }
     });
 }
@@ -109,24 +127,38 @@ function startHost() {
     myNickname = prompt("Inserisci il tuo Nickname:") || "Host";
     const shortId = generateShortId();
     inviteRoomId = shortId;
-    
     isHost = true;
     
+    // Salva i dati in sessione per recuperarli quando torni da WhatsApp
+    sessionStorage.setItem('host_room_id', shortId);
+    sessionStorage.setItem('host_nickname', myNickname);
+    
+    reconnectHost(shortId);
+}
+
+function reconnectHost(shortId) {
     initPeer(shortId, (id) => {
         document.getElementById('host-id-display').innerText = "ID Partita: " + id;
         document.getElementById('btn-host').disabled = true;
         document.getElementById('btn-join').disabled = true;
         document.getElementById('join-id').disabled = true;
-        
-        // Mostra il tasto copia link
         document.getElementById('btn-copy-link').style.display = 'inline-block';
         
-        players = [{ id: id, name: myNickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false }];
+        // Se la lista giocatori è vuota (prima creazione), inserisci l'Host
+        if (players.length === 0) {
+            players = [{ id: id, name: myNickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false }];
+        } else {
+            // Aggiorna l'ID dell'host se è cambiato durante il ripristino
+            players[0].id = id;
+        }
+        
         updatePlayerListUI();
         document.getElementById('player-list-container').style.display = 'block';
         document.getElementById('btn-start-game').style.display = 'inline-block';
         
         peer.on('connection', (connection) => {
+            // Rileva duplicati prima di aggiungere la connessione
+            connections = connections.filter(c => c.peer !== connection.peer);
             connections.push(connection);
             setupHostConnection(connection);
         });
@@ -143,14 +175,16 @@ function copyInviteLink() {
             btn.innerText = "🔗 Copia Link di Invito";
         }, 2000);
     }).catch(err => {
-        alert("Impossibile copiare automaticamente. Condividi questo link: " + inviteUrl);
+        alert("Copia questo link e invialo: " + inviteUrl);
     });
 }
 
 function setupHostConnection(connection) {
     connection.on('data', (data) => {
         if (data.type === 'SEND_NICKNAME') {
-            if (!players.some(p => p.id === connection.peer)) {
+            // Controlla se il giocatore esiste già (es. si era disconnesso temporaneamente)
+            const playerIndex = players.findIndex(p => p.id === connection.peer);
+            if (playerIndex === -1) {
                 players.push({ 
                     id: connection.peer, 
                     name: data.nickname, 
@@ -162,9 +196,16 @@ function setupHostConnection(connection) {
                     hasDouble: false, 
                     hasHeart: false 
                 });
-                updatePlayerListUI();
-                broadcast({ type: 'UPDATE_PLAYERS', players: players });
+            } else {
+                // Aggiorna il nickname se necessario
+                players[playerIndex].name = data.nickname;
             }
+            
+            // Aggiorna l'interfaccia dell'Host in tempo reale
+            updatePlayerListUI();
+            
+            // Invia la lista aggiornata a tutti i client connessi
+            broadcast({ type: 'UPDATE_PLAYERS', players: players });
         }
         
         if (isProcessingAction) return;
@@ -202,22 +243,19 @@ function joinGame() {
         conn = peer.connect(hostId);
         
         conn.on('open', () => {
-            // Inviamo SUBITO il nickname non appena la connessione è aperta e stabile
+            // Inviamo immediatamente il nickname all'apertura del tunnel
             conn.send({ type: 'SEND_NICKNAME', nickname: myNickname });
             
-            // Nascondi la lobby e mostra l'area di attesa
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('table').style.display = 'block';
             document.getElementById('turn-indicator').innerText = "Connesso! In attesa che l'host avvii la partita...";
         });
         
         conn.on('data', (data) => {
-            // Rimuoviamo il controllo su REQUEST_NICKNAME poiché non serve più
             if (data.type === 'UPDATE_PLAYERS') {
                 players = data.players;
                 updateScoresUI();
-                // Aggiorna anche la lista dei giocatori se siamo ancora in lobby grafica
-                updatePlayerListUI(); 
+                updatePlayerListUI();
             }
             if (data.type === 'START_GAME_CLIENT') {
                 document.getElementById('lobby').style.display = 'none';
@@ -246,7 +284,7 @@ function joinGame() {
         });
 
         conn.on('close', () => {
-            alert("Connessione con l'Host interrotta. Tentativo di ripristino o ricarica della pagina...");
+            alert("Connessione con l'Host interrotta. Tentativo di riconnessione...");
             location.reload();
         });
     });
@@ -318,7 +356,6 @@ function renderAllPlayersCards() {
     
     const me = players.find(p => p.id === myPeerId);
     
-    // 1. MIA fila personale (In Grande)
     if (me && me.cards && me.cards.length > 0) {
         me.cards.forEach(card => {
             myRowContainer.innerHTML += getCardHTML(card, false);
@@ -327,7 +364,6 @@ function renderAllPlayersCards() {
         myRowContainer.innerHTML = `<div style="font-style: italic; color: #aaa;">Nessuna carta pescata in questo round</div>`;
     }
     
-    // 2. File degli avversari (In Piccolo)
     players.forEach(p => {
         if (p.id !== myPeerId) {
             const oppDiv = document.createElement('div');
@@ -394,6 +430,7 @@ function showTargetSelection(eligibleTargets) {
     area.style.display = "block";
 }
 
+// Chiudi selezione
 function hideTargetSelection() {
     document.getElementById('target-selection-area').style.display = "none";
 }
@@ -411,6 +448,10 @@ function selectTarget(targetId) {
 
 function startGame() {
     if (!isHost) return;
+    
+    // Rimuovi lo stato "salvato" dal browser: la partita è iniziata ufficialmente
+    sessionStorage.removeItem('host_room_id');
+    sessionStorage.removeItem('host_nickname');
     
     deck = createDeck();
     activePlayerIndex = 0;
