@@ -148,14 +148,20 @@ function copyInviteLink() {
 }
 
 function setupHostConnection(connection) {
-    connection.on('open', () => {
-        connection.send({ type: 'REQUEST_NICKNAME' });
-    });
-
     connection.on('data', (data) => {
         if (data.type === 'SEND_NICKNAME') {
             if (!players.some(p => p.id === connection.peer)) {
-                players.push({ id: connection.peer, name: data.nickname, score: 0, active: true, busted: false, banked: false, cards: [], hasDouble: false, hasHeart: false });
+                players.push({ 
+                    id: connection.peer, 
+                    name: data.nickname, 
+                    score: 0, 
+                    active: true, 
+                    busted: false, 
+                    banked: false, 
+                    cards: [], 
+                    hasDouble: false, 
+                    hasHeart: false 
+                });
                 updatePlayerListUI();
                 broadcast({ type: 'UPDATE_PLAYERS', players: players });
             }
@@ -196,18 +202,22 @@ function joinGame() {
         conn = peer.connect(hostId);
         
         conn.on('open', () => {
+            // Inviamo SUBITO il nickname non appena la connessione è aperta e stabile
+            conn.send({ type: 'SEND_NICKNAME', nickname: myNickname });
+            
+            // Nascondi la lobby e mostra l'area di attesa
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('table').style.display = 'block';
             document.getElementById('turn-indicator').innerText = "Connesso! In attesa che l'host avvii la partita...";
         });
         
         conn.on('data', (data) => {
-            if (data.type === 'REQUEST_NICKNAME') {
-                conn.send({ type: 'SEND_NICKNAME', nickname: myNickname });
-            }
+            // Rimuoviamo il controllo su REQUEST_NICKNAME poiché non serve più
             if (data.type === 'UPDATE_PLAYERS') {
                 players = data.players;
                 updateScoresUI();
+                // Aggiorna anche la lista dei giocatori se siamo ancora in lobby grafica
+                updatePlayerListUI(); 
             }
             if (data.type === 'START_GAME_CLIENT') {
                 document.getElementById('lobby').style.display = 'none';
