@@ -88,19 +88,16 @@ function initPeer(customId, callback) {
         try { peer.destroy(); } catch(e) {}
     }
 
-    // Configurazione avanzata ICE con STUN e TURN per scavalcare i blocchi dei gestori mobili (Wind/Vodafone)
     peer = new Peer(customId, {
         host: '0.peerjs.com',
         port: 443,
         secure: true,
         pingInterval: 3000,
         config: {
+            // Forziamo l'uso esclusivo del relay (TURN) per evitare che Wind e il router di casa si blocchino a vicenda
+            'iceTransportPolicy': 'relay', 
             'iceServers': [
-                // Server STUN Standard
-                { 'urls': 'stun:stun.l.google.com:19302' },
-                { 'urls': 'stun:stun1.l.google.com:19302' },
-                
-                // Server TURN gratuiti dall'Open Relay Project per superare il NAT Simmetrico di WindTre
+                // Server TURN gratuiti dall'Open Relay Project
                 {
                     'urls': 'turn:openrelay.metered.ca:443',
                     'username': 'openrelayproject',
