@@ -88,7 +88,7 @@ function initPeer(customId, callback) {
         try { peer.destroy(); } catch(e) {}
     }
 
-    // Configurazione con server STUN pubblici per superare i firewall dei telefoni
+    // Configurazione avanzata ICE con STUN e TURN per scavalcare i blocchi dei gestori mobili (Wind/Vodafone)
     peer = new Peer(customId, {
         host: '0.peerjs.com',
         port: 443,
@@ -96,11 +96,21 @@ function initPeer(customId, callback) {
         pingInterval: 3000,
         config: {
             'iceServers': [
+                // Server STUN Standard
                 { 'urls': 'stun:stun.l.google.com:19302' },
                 { 'urls': 'stun:stun1.l.google.com:19302' },
-                { 'urls': 'stun:stun2.l.google.com:19302' },
-                { 'urls': 'stun:stun3.l.google.com:19302' },
-                { 'urls': 'stun:stun4.l.google.com:19302' }
+                
+                // Server TURN gratuiti dall'Open Relay Project per superare il NAT Simmetrico di WindTre
+                {
+                    'urls': 'turn:openrelay.metered.ca:443',
+                    'username': 'openrelayproject',
+                    'credential': 'openrelayproject'
+                },
+                {
+                    'urls': 'turn:openrelay.metered.ca:80',
+                    'username': 'openrelayproject',
+                    'credential': 'openrelayproject'
+                }
             ]
         }
     });
