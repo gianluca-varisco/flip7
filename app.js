@@ -83,8 +83,8 @@ function createDeck() {
 
 // --- LOGICA DI RETE (PEERJS) ---
 
+// CORRETTO: Rimossa la doppia dichiarazione nidificata di initPeer
 function initPeer(customId, callback) {
-    function initPeer(customId, callback) {
     if (peer) {
         try { peer.destroy(); } catch(e) {}
     }
@@ -95,7 +95,6 @@ function initPeer(customId, callback) {
         secure: true,
         pingInterval: 3000,
         config: {
-            // Rimuoviamo 'relay' forzato e lasciamo gestire a WebRTC lo switch automatico
             'iceServers': [
                 { 'urls': 'stun:stun.l.google.com:19302' },
                 { 'urls': 'stun:stun1.l.google.com:19302' },
@@ -124,7 +123,6 @@ function initPeer(customId, callback) {
             setTimeout(() => { reconnectHost(customId); }, 3000);
         }
     });
-}
 }
 
 function startHost() {
@@ -169,18 +167,32 @@ function reconnectHost(shortId) {
     });
 }
 
+// CORRETTO: Ottimizzata la condivisione per evitare crash in background su smartphone
 function copyInviteLink() {
     if (!inviteRoomId) return;
     const inviteUrl = window.location.origin + window.location.pathname + "?room=" + inviteRoomId;
-    navigator.clipboard.writeText(inviteUrl).then(() => {
-        const btn = document.getElementById('btn-copy-link');
-        btn.innerText = "✅ Link Copiato!";
-        setTimeout(() => {
-            btn.innerText = "🔗 Copia Link di Invito";
-        }, 2000);
-    }).catch(err => {
-        alert("Copia questo link e invialo: " + inviteUrl);
-    });
+    
+    if (navigator.share) {
+        navigator.share({
+            title: 'Gioca a Flip 7 con me!',
+            text: 'Entra nella mia partita di Flip 7:',
+            url: inviteUrl
+        }).then(() => {
+            console.log("Condiviso con successo!");
+        }).catch(err => {
+            console.log("Condivisione annullata/fallita:", err);
+        });
+    } else {
+        navigator.clipboard.writeText(inviteUrl).then(() => {
+            const btn = document.getElementById('btn-copy-link');
+            btn.innerText = "✅ Link Copiato!";
+            setTimeout(() => {
+                btn.innerText = "🔗 Copia Link di Invito";
+            }, 2000);
+        }).catch(err => {
+            alert("Copia questo link e invialo: " + inviteUrl);
+        });
+    }
 }
 
 function setupHostConnection(connection) {
